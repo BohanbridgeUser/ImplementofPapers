@@ -74,6 +74,11 @@ void MainFrame::set_parameters(double normal_threshold, double rth, int knn)
     m_knn = knn;
 };
 
+void MainFrame::run()
+{
+    m_algorithm();
+}
+
 void MainFrame::smoothness_constraint_segmentation()
 {
     p_logger->info("Normal threshold : {}", m_normal_threshold);
@@ -155,27 +160,29 @@ void MainFrame::smoothness_constraint_segmentation()
         if(regions[i].size() > 100)
             p_logger->info("{} region has {} points", i, regions[i].size());
     }
-        
-        
-    /**
-     * @brief Output the segmentation
-     */
-    std::string filename = "../output/con_seg.ply";
-    std::ofstream stream(filename);
-    if(!stream)
-    {
-        std::cerr << "Error: cannot open file" << std::endl;
-        return;
-    }
-    stream << std::fixed << std::setprecision(10);
+}
+
+
+/// @}
+/// @name Access
+/// @{
+
+/// @}
+/// @name Inquiry
+/// @{
+/// @}
+/// @name Input and Output
+/// @{
+void MainFrame::output_point_segmentation(const std::string& filename)
+{
     int nb_pts = 0;
     std::vector<CGAL::Color> colors;
     std::vector<std::vector<Point>> points;
     std::default_random_engine generator;
     std::uniform_int_distribution<int> uniform_distribution(0, 225);
-    for(int i=0;i<regions.size();++i)
+    for(int i=0;i<m_regions.size();++i)
     {
-        std::vector<int>& pi = regions[i];
+        std::vector<int>& pi = m_regions[i];
         float r = 0.0, g = 0.0, b = 0.0;
         CGAL::Color color;
         r = (float)uniform_distribution(generator);
@@ -190,41 +197,8 @@ void MainFrame::smoothness_constraint_segmentation()
             nb_pts++;
         }
     }
-    stream << "ply" << std::endl;
-    stream << "format ascii 1.0" << std::endl;
-    stream << "element vertex " << nb_pts << std::endl;
-    stream << "property float x" << std::endl;
-    stream << "property float y" << std::endl;
-    stream << "property float z" << std::endl;
-    stream << "property uchar red" << std::endl;
-    stream << "property uchar green" << std::endl;
-    stream << "property uchar blue" << std::endl;
-    stream << "element face " << 0 << std::endl;
-    stream << "property list uchar int vertex_index" << std::endl;
-    stream << "end_header" << std::endl;
-    // Vertices
-    for (size_t i = 0; i < points.size(); ++i) {
-        for (size_t j = 0; j < points[i].size(); ++j) {
-            stream << points[i][j].x() << " " << points[i][j].y() << " " << points[i][j].z()
-                << " " << (int)colors[i].r() << " " << (int)colors[i].g() << " " << (int)colors[i].b() << std::endl;
-        }
-    }
-    std::cout << "Outputing ply file end" << std::endl;
-    stream << std::endl;
-    stream.close();
+    output_ply_without_normal(filename, points, nb_pts, 0, colors);
 }
-
-
-/// @}
-/// @name Access
-/// @{
-
-/// @}
-/// @name Inquiry
-/// @{
-/// @}
-/// @name Input and Output
-/// @{
 /// @}
 
 
@@ -329,7 +303,61 @@ int MainFrame::find_set(const int p1, std::vector<int>& union_set)
 /// @name Private Inquiry
 /// @{
 /// @}
+/// @name Private Input and Output
+/// @{
+void MainFrame::output_ply_without_normal(const std::string& filename, std::vector<std::vector<Point>>& points, 
+                                          int nb_pts, int nb_faces,
+                                          std::vector<CGAL::Color>& colors)
+{
+    /**
+     * @brief Output the segmentation
+     */
+    boost::filesystem::create_directory("../output");
+    std::ofstream stream(filename);
+    if(!stream)
+    {
+        std::cerr << "Error: cannot open file" << std::endl;
+        return;
+    }
+    stream << std::fixed << std::setprecision(10);
+    stream << "ply" << std::endl;
+    stream << "format ascii 1.0" << std::endl;
+    stream << "element vertex " << nb_pts << std::endl;
+    stream << "property float x" << std::endl;
+    stream << "property float y" << std::endl;
+    stream << "property float z" << std::endl;
+    stream << "property uchar red" << std::endl;
+    stream << "property uchar green" << std::endl;
+    stream << "property uchar blue" << std::endl;
+    stream << "element face " << 0 << std::endl;
+    stream << "property list uchar int vertex_index" << std::endl;
+    stream << "end_header" << std::endl;
+    // Vertices
+    for (size_t i = 0; i < points.size(); ++i) {
+        for (size_t j = 0; j < points[i].size(); ++j) {
+            stream << points[i][j].x() << " " << points[i][j].y() << " " << points[i][j].z()
+                << " " << (int)colors[i].r() << " " << (int)colors[i].g() << " " << (int)colors[i].b() << std::endl;
+        }
+    }
 
+    // Facets
+    if(nb_faces > 0)
+    {
+        size_t cont = 0;
+        for (size_t i = 0; i < points.size(); i++) {
+            stream << points[i].size() << " ";
+            for (size_t k = cont; k < cont + points[i].size(); k++) {
+                stream << k << " ";
+            }
+            stream << std::endl;
+            cont = cont + points[i].size();
+        }
+    }
+    p_logger->info("Outputing ply file end");
+    stream << std::endl;
+    stream.close();
+}
+/// @}
 
 
 

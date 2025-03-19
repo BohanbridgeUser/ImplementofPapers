@@ -22,6 +22,10 @@ int main(int argc, char* argv[])
     MainFrame mainframe;
     mainframe.load_points(filename);
     mainframe.set_parameters(normal_threshold, rth, knn);
-    mainframe.smoothness_constraint_segmentation();
+    mainframe.set_algorithm([&mainframe](){
+        mainframe.smoothness_constraint_segmentation();
+    });
+    mainframe.run();
+    mainframe.output_point_segmentation("../output/smoothness_constraint_segmentation.ply");
     return 0;
 }

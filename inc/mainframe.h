@@ -28,6 +28,7 @@
 #include <list>
 #include <unordered_set>
 #include <algorithm>
+#include <functional>
 
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -66,8 +67,17 @@ class MainFrame
         /// @{
             int load_points(const std::string& filename);
             void set_parameters(double normal_threshold, double rth=0.3, int knn = 40);
+            
+            template<typename A, typename... Args>
+            void set_algorithm(A&& algorithm, Args&& ... args)
+            {
+                m_algorithm=std::function<void()>(std::bind(std::forward<A>(algorithm), std::forward<Args>(args)...));
+            }
+
+            void run();
 
             void smoothness_constraint_segmentation();
+            
         /// @}
         /// @name Access
         /// @{
@@ -77,6 +87,7 @@ class MainFrame
         /// @}
         /// @name Input and Output
         /// @{
+            void output_point_segmentation(const std::string& filename);
         /// @}
     protected:
         /// @name Protected Static Member Variables
@@ -118,6 +129,9 @@ class MainFrame
              */
             MyThreadPool                                        m_threads_pool;
 
+            std::function<void()>                               m_algorithm;
+
+
             /**
              * @param m_rth threshold of smoothness constraint segmentation
              * @param m_knn num of nearest neighobrs
@@ -126,6 +140,7 @@ class MainFrame
             double                                              m_rth;
             size_t                                              m_knn;
             std::vector<std::vector<int>>                       m_regions;
+
 
         /// @}
         /// @name Private Operatiors
@@ -142,6 +157,12 @@ class MainFrame
         /// @}
         /// @name Private Inquiry
         /// @{
+        /// @}
+        /// @name Private Input and Output
+        /// @{
+        void output_ply_without_normal(const std::string& filename, std::vector<std::vector<Point>>& Points, 
+                                       int nb_pts, int nb_faces,
+                                       std::vector<CGAL::Color>& colors);
         /// @}
 };
 

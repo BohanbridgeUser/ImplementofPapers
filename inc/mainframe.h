@@ -1,37 +1,9 @@
 #ifndef _MAINFRAME_H_
 #define _MAINFRAME_H_
-
-#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
-#include <CGAL/IO/read_ply_points.h>
-#include <CGAL/IO/write_xyz_points.h>
-#include <CGAL/property_map.h>
-#include <CGAL/Search_traits_3.h>
-#include <CGAL/Orthogonal_k_neighbor_search.h>
-#include <CGAL/linear_least_squares_fitting_3.h>
-
-#include <Eigen/Dense>
-#include <Eigen/Eigenvalues>
-
+#include "define.h"
 #include "my_thread_pool.h"
 
-#include <boost/filesystem.hpp>
-#include <vector>
-#include <memory>
-#include <map>
-#include <unordered_map>
-#include <unordered_set>
-#include <sstream>
-#include <thread>
-#include <random>
-#include <limits>
-#include <chrono>
-#include <list>
-#include <unordered_set>
-#include <algorithm>
-#include <functional>
-
-#include "spdlog/spdlog.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
+#include "smoothness_constraint_segmentation.h"
 
 class MainFrame
 {

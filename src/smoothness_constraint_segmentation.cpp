@@ -1,85 +1,104 @@
-#include "mainframe.h"
+#include "smoothness_constraint_segmentation.h"
 
-
-
-
-/// @brief public:
-/// @name Type Define
-/// @{
-/// @}
-/// @name Life Circle
-/// @{
-MainFrame::MainFrame(int num_of_threads):m_threads_pool(num_of_threads)
+SmoothnessConstraintSegmentation::SmoothnessConstraintSegmentation()
 {
-    if(spdlog::get("CAD_Reconstruction")){
-        p_logger = spdlog::get("CAD_Reconstruction");
+    if(spdlog::get("SmoothnessConstraintSegmentation")){
+        p_logger = spdlog::get("SmoothnessConstraintSegmentation");
     }
     else{
-        p_logger = spdlog::stdout_color_mt("CAD_Reconstruction");
+        p_logger = spdlog::stdout_color_mt("SmoothnessConstraintSegmentation");
     }
 
     spdlog::set_level(spdlog::level::info);
     spdlog::set_pattern("[%H:%M:%S] [%n] [%l] %v");
-
-    m_if_oriented_normal = true;
-    m_normal_threshold = 0.95; // 0.;70
-
-    m_knn = 20;
-    m_rth = 0.3;
 }
 
-MainFrame::~MainFrame()
+SmoothnessConstraintSegmentation::~SmoothnessConstraintSegmentation()
 {
 
 }
 
-/// @}
-/// @name Operators
-/// @{
-/// @}
-/// @name Operations
-/// @{
-int MainFrame::load_points(const std::string& filename)
+void SmoothnessConstraintSegmentation::SetParameters(const std::vector<std::any>& parameters)
+{
+    if(parameters.size() != 4)
+    {
+        throw std::invalid_argument("SetParameters requires exactly 4 arguments");
+    }
+        
+    m_filename = std::any_cast<std::string>(parameters[0]);
+    m_normal_threshold = std::any_cast<double>(parameters[1]);
+    m_rth = std::any_cast<double>(parameters[2]);
+    m_knn = std::any_cast<int>(parameters[3]);
+}
+
+void SmoothnessConstraintSegmentation::Execute()
+{
+    if(load_ply(m_filename))
+    {
+        p_logger->error("Failed load points!");
+        return;
+    }
+    smoothness_constraint_segmentation();
+    output_point_segmentation("../output/smoothness_constraint_segmentation.ply");
+}
+
+int SmoothnessConstraintSegmentation::load_ply(const std::string &filename)
 {
     std::string path_point_cloud = filename;
-    std::string path_point_cloud_extension = boost::filesystem::extension(path_point_cloud);
+    std::string path_point_cloud_extension = boost::filesystem::path(path_point_cloud).extension().string();
 
     if(!boost::filesystem::exists(path_point_cloud)){
         p_logger->error("File {} does not exist",path_point_cloud);
         return 1;
     }
-
     p_logger->info("Load points from {}", filename);
 
     m_PWNs.clear();
-
-    if (path_point_cloud_extension == ".ply")
-        load_ply(filename);
-    else
+    if(path_point_cloud_extension != ".ply")
     {
-        p_logger->error("{} is not a valid points file",path_point_cloud_extension);
+        p_logger->error("Only support ply file!");
         return 1;
     }
-        
 
-    p_logger->info("Loaded {} points",m_PWNs.size());
+    std::ifstream streamb(filename);
+    int line = 0;
+    std::string s;
+    while (streamb && line < 2) {
+        if (!getline(streamb, s)) break;
+        line++;
+    }
+    streamb.close();
+
+    if (s == "format ascii 1.0") {
+        std::ifstream stream(filename);
+        if (!stream || !CGAL::IO::read_PLY_with_properties(stream, std::back_inserter(m_PWNs),
+                                                                   CGAL::IO::make_ply_point_reader(Point_map()),
+                                                                   CGAL::IO::make_ply_normal_reader(Normal_map()))) {
+            p_logger->info("wrong1");
+            return 1;
+        }
+    }
+    else {
+        std::ifstream stream(filename, std::ios_base::binary);
+        if (!stream || !CGAL::IO::read_PLY_with_properties(stream, std::back_inserter(m_PWNs),
+                                                           CGAL::IO::make_ply_point_reader(Point_map()),
+                                                           CGAL::IO::make_ply_normal_reader(Normal_map()))) {
+            p_logger->info("wrong2");
+            return 1;
+        }
+    }
     
+    if(m_PWNs[0].second == Vector(0,0,0))
+    {
+        p_logger->warn("Normal is not oriented, orienting normal");
+        m_if_oriented_normal= false;
+    }
+    else
+        m_if_oriented_normal= true;
     return 0;
 }
 
-void MainFrame::set_parameters(double normal_threshold, double rth, int knn) 
-{
-    m_normal_threshold = normal_threshold;
-    m_rth = rth;
-    m_knn = knn;
-};
-
-void MainFrame::run()
-{
-    m_algorithm();
-}
-
-void MainFrame::smoothness_constraint_segmentation()
+void SmoothnessConstraintSegmentation::smoothness_constraint_segmentation()
 {
     p_logger->info("Normal threshold : {}", m_normal_threshold);
     p_logger->info("Rth    threshold : {}", m_rth);
@@ -163,17 +182,7 @@ void MainFrame::smoothness_constraint_segmentation()
 }
 
 
-/// @}
-/// @name Access
-/// @{
-
-/// @}
-/// @name Inquiry
-/// @{
-/// @}
-/// @name Input and Output
-/// @{
-void MainFrame::output_point_segmentation(const std::string& filename)
+void SmoothnessConstraintSegmentation::output_point_segmentation(const std::string& filename)
 {
     int nb_pts = 0;
     std::vector<CGAL::Color> colors;
@@ -199,115 +208,10 @@ void MainFrame::output_point_segmentation(const std::string& filename)
     }
     output_ply_without_normal(filename, points, nb_pts, 0, colors);
 }
-/// @}
 
-
-/// @brief protected:
-/// @name Protected Static Member Variables
-/// @{
-/// @}
-/// @name Protected Member Variables
-/// @{
-/// @}
-/// @name Protected Operatiors
-/// @{
-/// @}
-/// @name Protected Operations
-/// @{
-/// @}
-/// @name Protected Access
-/// @{
-/// @}
-/// @name Protected Inquiry
-/// @{
-/// @}
-
-/// @brief private:
-/// @name Private Static Member Variables
-/// @{
-/// @}
-/// @name Private Member Variables
-/// @{
-/// @}
-/// @name Private Operatiors
-/// @{
-/// @}
-/// @name Private Operations
-/// @{
-int MainFrame::load_ply(const std::string &filename)
-{
-    std::ifstream streamb(filename);
-    int line = 0;
-    std::string s;
-    while (streamb && line < 2) {
-        if (!getline(streamb, s)) break;
-        line++;
-    }
-    streamb.close();
-
-    if (s == "format ascii 1.0") {
-        std::ifstream stream(filename);
-        if (!stream || !CGAL::IO::read_PLY_with_properties(stream, std::back_inserter(m_PWNs),
-                                                                   CGAL::IO::make_ply_point_reader(Point_map()),
-                                                                   CGAL::IO::make_ply_normal_reader(Normal_map()))) {
-            return 1;
-        }
-    }
-    else {
-        std::ifstream stream(filename, std::ios_base::binary);
-        if (!stream || !CGAL::IO::read_PLY_with_properties(stream, std::back_inserter(m_PWNs),
-                                                           CGAL::IO::make_ply_point_reader(Point_map()),
-                                                           CGAL::IO::make_ply_normal_reader(Normal_map()))) {
-            return 1;
-        }
-    }
-    
-    if(m_PWNs[0].second == Vector(0,0,0))
-    {
-        p_logger->warn("Normal is not oriented, orienting normal");
-        m_if_oriented_normal= false;
-    }
-    else
-        m_if_oriented_normal= true;
-    return 0;
-}
-
-void MainFrame::union_set(const int p1, const int p2, std::vector<int>& union_set)
-{
-    int root1 = p1, root2 = p2;
-    while(union_set[root1] != -1)
-        root1 = union_set[root1];
-    if(root1 != p1)
-        union_set[p1] = root1;
-    while(union_set[root2] != -1)
-        root2 = union_set[root2];
-    if(p2 != root2)
-        union_set[p2] = root2;
-        
-    if(root1 != root2)
-        union_set[root1] = root2;
-}
-
-int MainFrame::find_set(const int p1, std::vector<int>& union_set)
-{
-    int root1 = p1;
-    while(union_set[root1] != -1)
-        root1 = union_set[root1];
-    return root1;
-}
-
-/// @}
-/// @name Private Access
-/// @{
-/// @}
-/// @name Private Inquiry
-/// @{
-/// @}
-/// @name Private Input and Output
-/// @{
-void MainFrame::output_ply_without_normal(const std::string& filename, std::vector<std::vector<Point>>& points, 
-                                          int nb_pts, int nb_faces,
-                                          std::vector<CGAL::Color>& colors)
+void SmoothnessConstraintSegmentation::output_ply_without_normal(const std::string& filename, std::vector<std::vector<Point>>& points, 
+                                                                 int nb_pts, int nb_faces,
+                                                                 std::vector<CGAL::Color>& colors)
 {
     /**
      * @brief Output the segmentation
@@ -357,15 +261,3 @@ void MainFrame::output_ply_without_normal(const std::string& filename, std::vect
     stream << std::endl;
     stream.close();
 }
-
-
-/// @}
-
-
-
-
-
-
-
-
-

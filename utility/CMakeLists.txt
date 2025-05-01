@@ -4,7 +4,7 @@ PROJECT(Utility LANGUAGES CXX)
 SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 SET(CMAKE_BUILD_TYPE "Release")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -fopenmp -DNDEBUG")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -fopenmp -DNDEBUG -ffast-math")
 ######################################################
 ###################### SETTINGS ######################
 ######################################################
@@ -34,6 +34,7 @@ INCLUDE_DIRECTORIES(
 
 SET(SRC_LIST
     ./src/my_thread_pool.cpp
+    ./src/MyUtility.cpp
 )
 # AUX_SOURCE_DIRECTORY(src        SRC_LIST)
 

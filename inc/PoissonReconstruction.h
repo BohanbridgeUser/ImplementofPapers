@@ -1,21 +1,6 @@
 #ifndef _POISSON_RECONSTRUCTION_H_
 #define _POISSON_RECONSTRUCTION_H_
 
-#define CHECK_FOR_IJ_CONTINUE(j,k) \
-    if( (j) == (k) || ((j) % 2 == 0 && (k) == (j) + 1) || ((j) % 2 != 0 && (k) == (j) - 1)) \
-                            continue;                                           
-
-#define CHECK_FOR_IJK_CONTINUE(j,k,l) \
-    CHECK_FOR_IJ_CONTINUE(j,k) \
-    CHECK_FOR_IJ_CONTINUE(k,l) 
-
-#define CHECK_OVERLAP_VALID_CONTINURE(overlap) \
-    double xb = (overlap).xmin(), xe = (overlap).xmax(), \
-           yb = (overlap).ymin(), ye = (overlap).ymax(), \
-           zb = (overlap).zmin(), ze = (overlap).zmax(); \
-    if( std::fabs(xe-xb) < 1e-10 || std::fabs(ye-yb) < 1e-10 || std::fabs(ze-zb) < 1e-10) \
-        continue;
-
 #include "algorithm.h"
 
 class PoissonReconstruction : public Algorithm
@@ -64,6 +49,10 @@ class PoissonReconstruction : public Algorithm
         double                                                          m_scale_coefficient;
         std::vector<Point>                                              m_polygon_points;
         std::vector<std::vector<int>>                                   m_polygon_soup;
+        std::array<std::array<int,16>, 256>                             m_triTable;
+        std::array<std::array<int,2>, 12>                               m_edgeTable;
+        std::map<NodeIndex,std::array<double, 8>>                       m_node_indicators;
+        std::map<NodeIndex,std::bitset<8>>                              m_indices;
 
 
         bool loadPointsWithNormal();
@@ -97,15 +86,15 @@ class PoissonReconstruction : public Algorithm
         double calBboxFilterFunctionConvolve3Differ(double to, NodeIndex node, int dir);
         double calBboxFilterFunctionConvolve3Differ2(double to, NodeIndex node, int dir);
         double call0(NodeIndex node1, NodeIndex node2, Bbox_3& overlap);
-        double calIndicator(Point& point);
+        double calIndicator(Point const& point);
 
-        double calF0(Point& q, NodeIndex oNode);
-        double calF0PX(Point& q, NodeIndex oNode);
-        double calF0PY(Point& q, NodeIndex oNode);
-        double calF0PZ(Point& q, NodeIndex oNode);
-        double calF0PX2(Point& q, NodeIndex oNode);
-        double calF0PY2(Point& q, NodeIndex oNode);
-        double calF0PZ2(Point& q, NodeIndex oNode);
+        double calF0(Point const& q, NodeIndex oNode);
+        double calF0PX(Point const& q, NodeIndex oNode);
+        double calF0PY(Point const& q, NodeIndex oNode);
+        double calF0PZ(Point const& q, NodeIndex oNode);
+        double calF0PX2(Point const& q, NodeIndex oNode);
+        double calF0PY2(Point const& q, NodeIndex oNode);
+        double calF0PZ2(Point const& q, NodeIndex oNode);
         void outputBbox(NodeIndex node);
         void outputBboxF0();
         void outputBboxD(int depth);
@@ -144,6 +133,10 @@ class PoissonReconstruction : public Algorithm
             }
             return output;
         }
+
+        void calNodeVerIndicatorAndIndex(NodeIndex node, std::vector<Point>& nodeVertices);
+        std::unordered_set<Segment> finestEdges(Segment& edge, NodeIndex node);
+        Point InterPolatePoint(Point const& p1, Point const& p2, double indicator1, double indicator2);
 
 };
 

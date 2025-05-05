@@ -34,7 +34,7 @@ int main(int argc, char* argv[])
 
     /* Poisson Reconstruction */
     std::string filename;
-    double cbbox = 3.0;
+    double cbbox = 1.2;
     if(argc > 1)
     {
         filename = std::string(argv[1]);
@@ -42,7 +42,7 @@ int main(int argc, char* argv[])
     }   
     else
     {
-        filename = "../data/bunny_pc.ply";
+        filename = "../data/sphere_pc100.ply";
     }
     AlgorithmFactory factory;
     std::shared_ptr<Algorithm> p_algorithm = factory.Create_Algorithm("Poisson");

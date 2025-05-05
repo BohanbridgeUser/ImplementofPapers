@@ -710,7 +710,7 @@ bool PoissonReconstruction::buildVectorField()
             cnt++;
         }        
     }
-        
+    p_octree->grade();
     // calOverlap();
     calOverlapRecursive();
     return true;
@@ -1311,24 +1311,41 @@ bool PoissonReconstruction::marchingCubes()
      *                  e3 /      e7 /
      *                  | /        |/
      *                  3---e11---7    
-     */    
+     */   
+    /**
+     * @brief Octree child node index
+     *     2-------3
+     *    /|      /|
+     *   / |     / |
+     *  /  |    /  |
+     * 6-------7   |
+     * |   0---|---1
+     * |  /    |  /
+     * | /     | /
+     * |/      |/
+     * 4-------5
+     * @details
+     * enum Child {
+     *      LEFT_BOTTOM_BACK,
+     *      RIGHT_BOTTOM_BACK,
+     *      LEFT_TOP_BACK,
+     *      RIGHT_TOP_BACK,
+     *      LEFT_BOTTOM_FRONT,
+     *      RIGHT_BOTTOM_FRONT,
+     *      LEFT_TOP_FRONT,
+     *      RIGHT_TOP_FRONT
+     *  };
+     */ 
+    p_logger->info("Marching Cubes ------ PreSplit Nodes");
     for(auto node : p_octree->traverse<LeavesTraversal>()) {
-        OctreeBbox3 obbox = p_octree->bbox(node);
-        std::vector<NodeIndex> interNodes;
-        p_octree->intersected_nodes(obbox, std::back_inserter(interNodes));
-        for(int i=0;i<interNodes.size();i++) {
-            const auto result = CGAL::intersection::(p_octree->bbox(interNodes[i]), obbox);
-            if(const Point* p = std::get_if<Point>(&*result)) {
-                continue;
-            } else if (const Segment* s = std::get_if<Segment>(&*result)) {
-                
-            } else if (const OctreeBbox3* b = std::get_if<OctreeBbox3>(&*result)) {
-                
-            }
-        }
+        preSplitRecursively(node);
     }
+    p_logger->info("Marching Cubes ------ PreSplit Nodes done");
 
+    p_logger->info("Marching Cubes ------ Triangles calculation");
     for(auto node : p_octree->traverse<LeavesTraversal>()) {
+        if (m_indices[node].to_ulong() == 0)
+            continue;
         OctreeBbox3 obbox = p_octree->bbox(node);
         std::vector<Point> nodeVertices({
             {obbox.xmin(), obbox.ymax(),obbox.zmax()},
@@ -1340,49 +1357,42 @@ bool PoissonReconstruction::marchingCubes()
             {obbox.xmax(), obbox.ymin(),obbox.zmin()},
             {obbox.xmax(), obbox.ymin(),obbox.zmax()}
         });
-        calNodeVerIndicatorAndIndex(node, nodeVertices);
         std::array<int, 16>& allEdgeIDs = triTable[m_indices[node].to_ulong()];
-        std::vector<int> edges;
+        std::array<double,8>& nodeIndicators = m_node_indicators[node];
+        std::vector<std::vector<int>> tri2edge;
         for(int i=0;i<16;i+=3) {
             if(allEdgeIDs[i] == -1) 
                 continue;
-            std::vector<int> triangle;
-            edges.push_back(allEdgeIDs[i]);
-            Segment edge(nodeVertices[edgeTable[edges.back()][0]], nodeVertices[edgeTable[edges.back()][1]]);
-            std::unordered_set edgeSet = finestEdges(edge, node);
-            for(auto e : edgeSet)
-                m_polygon_points.emplace_back(InterPolatePoint(e.point(0), e.point(1), 
-                                                                calIndicator(e.point(0)), calIndicator(e.point(1))));
-            triangle.push_back(m_polygon_points.size()-1);
-            edges.push_back(allEdgeIDs[i+1]);
-            Segment edge1(nodeVertices[edgeTable[edges.back()][0]], nodeVertices[edgeTable[edges.back()][1]]);
-            std::unordered_set edgeSet1 = finestEdges(edge1, node);
-            for(auto e : edgeSet1)
-                m_polygon_points.emplace_back(InterPolatePoint(e.point(0), e.point(1), 
-                                               calIndicator(e.point(0)), calIndicator(e.point(1))));
-            triangle.push_back(m_polygon_points.size()-1);
-            edges.push_back(allEdgeIDs[i+2]);
-            Segment edge2(nodeVertices[edgeTable[edges.back()][0]], nodeVertices[edgeTable[edges.back()][1]]);
-            std::unordered_set edgeSet2 = finestEdges(edge2, node);
-            for(auto e : edgeSet2)
-                m_polygon_points.emplace_back(InterPolatePoint(e.point(0), e.point(1), 
-                                                                calIndicator(e.point(0)), calIndicator(e.point(1))));
-            triangle.push_back(m_polygon_points.size()-1);
-            m_polygon_soup.push_back(triangle);
-            if(triangle.size() != 3)
-                p_logger->info("triangle size : {}", triangle.size());
-            
-            if(edgeSet.size() > 1) {
-                p_logger->info("Node need split");
-            }
-            else {
-                
-            }
+            std::vector<int> tri({allEdgeIDs[i], allEdgeIDs[i+1], allEdgeIDs[i+2]});
+            tri2edge.push_back(tri);
         }
-
+        for(int i=0;i<tri2edge.size();++i) {
+            std::vector<int>& edges = tri2edge[i];
+            std::vector<int> triangle;
+            for(int j=0;j<edges.size();++j) {
+                int node1ID = edgeTable[edges[j]][0];
+                int node2ID = edgeTable[edges[j]][1];
+                double node1Indicator = nodeIndicators[node1ID];
+                double node2Indicator = nodeIndicators[node2ID];
+                double t = (m_scale_coefficient - node1Indicator) / (node2Indicator - node1Indicator);
+                Eigen::Vector3d p1(nodeVertices[node1ID].x(), nodeVertices[node1ID].y(), nodeVertices[node1ID].z());
+                Eigen::Vector3d p2(nodeVertices[node2ID].x(), nodeVertices[node2ID].y(), nodeVertices[node2ID].z());
+                Eigen::Vector3d p0 = p1 + t * (p2 - p1);
+                m_polygon_points.push_back({p0.x(), p0.y(), p0.z()});
+                triangle.push_back(m_polygon_points.size()-1);
+            }
+            m_polygon_soup.push_back(triangle);
+        }
     }
-    
+
     // for(auto node : p_octree->traverse<LeavesTraversal>()) {
+    //     splitRecursively(node);
+    // }
+    
+    // p_logger->info("Marching Cubes ------ Triangles calculation");
+    // for(auto node : p_octree->traverse<LeavesTraversal>()) {
+    //     if (m_indices[node].to_ulong() == 0)
+    //         continue;
     //     OctreeBbox3 obbox = p_octree->bbox(node);
     //     std::vector<Point> nodeVertices({
     //         {obbox.xmin(), obbox.ymax(),obbox.zmax()},
@@ -1394,14 +1404,8 @@ bool PoissonReconstruction::marchingCubes()
     //         {obbox.xmax(), obbox.ymin(),obbox.zmin()},
     //         {obbox.xmax(), obbox.ymin(),obbox.zmax()}
     //     });
-    //     std::vector<double> nodeIndicators(8);
-    //     std::bitset<8> index(0);
-    //     for(int i=0;i<8;++i) {
-    //         nodeIndicators[i] = calIndicator(nodeVertices[i]);
-    //         if(nodeIndicators[i] <= m_scale_coefficient)
-    //             index.set(i,1);
-    //     }   
-    //     std::array<int, 16>& allEdgeIDs = triTable[index.to_ulong()];
+    //     std::array<int, 16>& allEdgeIDs = triTable[m_indices[node].to_ulong()];
+    //     std::array<double,8>& nodeIndicators = m_node_indicators[node];
     //     std::vector<std::vector<int>> tri2edge;
     //     for(int i=0;i<16;i+=3) {
     //         if(allEdgeIDs[i] == -1) 
@@ -1427,7 +1431,93 @@ bool PoissonReconstruction::marchingCubes()
     //         m_polygon_soup.push_back(triangle);
     //     }
     // }
+    p_logger->info("Marching Cubes ------ done");
     return true;
+}
+
+bool PoissonReconstruction::preSplitRecursively(NodeIndex node)
+{
+    OctreeBbox3 obbox = p_octree->bbox(node);
+    std::vector<Point> nodeVertices({
+        {obbox.xmin(), obbox.ymax(),obbox.zmax()},
+        {obbox.xmin(), obbox.ymax(),obbox.zmin()},
+        {obbox.xmin(), obbox.ymin(),obbox.zmin()},
+        {obbox.xmin(), obbox.ymin(),obbox.zmax()},
+        {obbox.xmax(), obbox.ymax(),obbox.zmax()},
+        {obbox.xmax(), obbox.ymax(),obbox.zmin()},
+        {obbox.xmax(), obbox.ymin(),obbox.zmin()},
+        {obbox.xmax(), obbox.ymin(),obbox.zmax()}
+    });
+    calNodeVerIndicatorAndIndex(node, nodeVertices);
+    if(m_indices[node].to_ulong() == 0)
+        return false;
+    if(p_octree->depth(node) < p_octree->depth()) {
+        p_octree->split(node);
+        for(int i=0;i<8;++i) 
+            preSplitRecursively(p_octree->child(node,i));
+    }
+    return true;
+}
+
+void PoissonReconstruction::splitRecursively(NodeIndex node)
+{
+    std::array<std::array<int,16>, 256> triTable = m_triTable;
+    std::array<std::array<int,2>, 12>& edgeTable = m_edgeTable;
+    OctreeBbox3 obbox = p_octree->bbox(node);
+    std::vector<Point> nodeVertices({
+        {obbox.xmin(), obbox.ymax(),obbox.zmax()},
+        {obbox.xmin(), obbox.ymax(),obbox.zmin()},
+        {obbox.xmin(), obbox.ymin(),obbox.zmin()},
+        {obbox.xmin(), obbox.ymin(),obbox.zmax()},
+        {obbox.xmax(), obbox.ymax(),obbox.zmax()},
+        {obbox.xmax(), obbox.ymax(),obbox.zmin()},
+        {obbox.xmax(), obbox.ymin(),obbox.zmin()},
+        {obbox.xmax(), obbox.ymin(),obbox.zmax()}
+    });
+    calNodeVerIndicatorAndIndex(node, nodeVertices);
+    std::array<int, 16>& allEdgeIDs = triTable[m_indices[node].to_ulong()];
+    std::vector<int> edges;
+    std::vector<Point> triP;
+    bool needSplit = false;
+    for(int i=0;i<16 && !needSplit;i+=3) {
+        if(allEdgeIDs[i] == -1) 
+            continue;
+        for(int j=0;j<3 && !needSplit;j++) {
+            edges.push_back(allEdgeIDs[i+j]);
+            Segment edge(nodeVertices[edgeTable[edges.back()][0]], nodeVertices[edgeTable[edges.back()][1]]);
+            auto zeroCrossOpt = finestZeroCrossing(edge, node);
+            Point ipoint;
+            if(auto* p = std::get_if<Point>(&zeroCrossOpt)) {
+                ipoint = *p;
+                triP.push_back(ipoint);
+            } else {
+                int* size = std::get_if<int>(&zeroCrossOpt);
+                if(size == 0) {
+                    ipoint = *interPolatePoint(edge);
+                    triP.push_back(ipoint);
+                }else {
+                    p_logger->info("Need split");
+                    needSplit = true;
+                }
+            }
+        }
+    }
+    if(needSplit){
+        p_octree->split(node);
+        for(int i=0;i<8;++i) {
+            splitRecursively(p_octree->child(node,i));
+        }
+    } else {
+        for(int i = 0; i < triP.size(); i+=3) {
+            std::vector<int> triID;
+            m_polygon_points.push_back(triP[i]);
+            m_polygon_points.push_back(triP[i+1]);
+            m_polygon_points.push_back(triP[i+2]);
+            m_polygon_soup.push_back({(int)m_polygon_points.size()-3, 
+                                        (int)m_polygon_points.size()-2, 
+                                        (int)m_polygon_points.size()-1});
+        }
+    }
 }
 
 void PoissonReconstruction::validation()
@@ -3312,6 +3402,46 @@ void PoissonReconstruction::calNodeVerIndicatorAndIndex(NodeIndex node, std::vec
     }      
 }
 
+bool PoissonReconstruction::checkSplit(NodeIndex node, std::array<int, 16>& allEdgeIDs, std::vector<Point>& nodeVertices) 
+{
+    std::array<std::array<int,2>, 12>& edgeTable = m_edgeTable;
+    for(int i=0;i<16;i++) {
+        if(allEdgeIDs[i] == -1) 
+            continue;
+        Segment edge(nodeVertices[edgeTable[allEdgeIDs[i]][0]], nodeVertices[edgeTable[allEdgeIDs[i]][1]]);
+        int deepest = 0;
+        auto isIntersectedPoint = [this, &edge, &deepest](NodeIndex const& node) {
+            OctreeBbox3 interobbox = p_octree->bbox(node);
+            const auto result = CGAL::intersection(edge, interobbox);
+            if(const Point* interPoint = std::get_if<Point>(&*result)) {
+                return true;
+            }else if(const Segment* interSegment = std::get_if<Segment>(&*result)) {
+                if(p_octree->depth(node) > deepest)
+                    deepest = p_octree->depth(node);
+                return false;
+            } else {
+                if(p_octree->depth(node) > deepest)
+                    deepest = p_octree->depth(node);
+                return false;
+            }
+        };
+        std::vector<NodeIndex> interNodes;
+        p_octree->intersected_nodes(edge, std::back_inserter(interNodes));
+        interNodes.erase(std::remove_if(interNodes.begin(), interNodes.end(), isIntersectedPoint), interNodes.end());
+        std::unordered_set<Segment> segSet;
+        for(int j=0;j<interNodes.size();++j) {
+            if(p_octree->depth(interNodes[j]) < deepest)
+                continue;
+            const auto result = CGAL::intersection(edge, p_octree->bbox(interNodes[j]));
+            const Segment* interSeg = std::get_if<Segment>(&*result);
+            segSet.insert(*interSeg);
+        }
+        if(segSet.size() > 1)
+            return true;
+    }
+    return false;
+}
+
 std::unordered_set<Segment> PoissonReconstruction::finestEdges(Segment& edge, NodeIndex node)
 {
     int deepest = 0;
@@ -3325,6 +3455,8 @@ std::unordered_set<Segment> PoissonReconstruction::finestEdges(Segment& edge, No
                 deepest = p_octree->depth(node);
             return false;
         } else {
+            if(p_octree->depth(node) > deepest)
+                deepest = p_octree->depth(node);
             return false;
         }
     };
@@ -3335,7 +3467,7 @@ std::unordered_set<Segment> PoissonReconstruction::finestEdges(Segment& edge, No
     for(int i=0;i<interNodes.size();++i) {
         if(p_octree->depth(interNodes[i]) < deepest)
             continue;
-        const auto result = CGAL::intersection(edge, p_octree->bbox(node));
+        const auto result = CGAL::intersection(edge, p_octree->bbox(interNodes[i]));
         const Segment* interSeg = std::get_if<Segment>(&*result);
         segSet.insert(*interSeg);
     }
@@ -3344,6 +3476,59 @@ std::unordered_set<Segment> PoissonReconstruction::finestEdges(Segment& edge, No
         p_logger->info("Marching Cubes ----- SegSet : {}", segSet.size());
     }
     return segSet;
+}
+
+std::variant<Point,int> PoissonReconstruction::finestZeroCrossing(Segment& edge, NodeIndex node)
+{
+    int deepest = 0;
+    auto isIntersectedPoint = [this, &edge, &deepest](NodeIndex const& node) {
+        OctreeBbox3 interobbox = p_octree->bbox(node);
+        const auto result = CGAL::intersection(edge, interobbox);
+        if(const Point* interPoint = std::get_if<Point>(&*result)) {
+            return true;
+        }else if(const Segment* interSegment = std::get_if<Segment>(&*result)) {
+            if(p_octree->depth(node) > deepest)
+                deepest = p_octree->depth(node);
+            return false;
+        } else {
+            if(p_octree->depth(node) > deepest)
+                deepest = p_octree->depth(node);
+            return false;
+        }
+    };
+    std::vector<NodeIndex> interNodes;
+    p_octree->intersected_nodes(edge, std::back_inserter(interNodes));
+    interNodes.erase(std::remove_if(interNodes.begin(), interNodes.end(), isIntersectedPoint), interNodes.end());
+    std::unordered_set<Segment> segSet;
+    for(int i=0;i<interNodes.size();++i) {
+        if(p_octree->depth(interNodes[i]) < deepest)
+            continue;
+        const auto result = CGAL::intersection(edge, p_octree->bbox(interNodes[i]));
+        const Segment* interSeg = std::get_if<Segment>(&*result);
+        segSet.insert(*interSeg);
+    }
+    std::vector<Point> interPoints;
+    for(auto it = segSet.begin(); it != segSet.end(); ++it) {
+        auto result = interPolatePoint(*it);
+        if(result.has_value())
+            interPoints.push_back(*result);
+    }
+    if(interPoints.size() != 1 )
+        return (int)interPoints.size();
+    else
+        return interPoints[0];
+}
+
+std::optional<Point> PoissonReconstruction::interPolatePoint(Segment const& edge)
+{
+    Point p1 = edge.point(0), p2 = edge.point(1);
+    double indicator1 = calIndicator(p1);
+    double indicator2 = calIndicator(p2);
+    if((indicator1 > m_scale_coefficient && indicator2 > m_scale_coefficient) ||
+       (indicator1 < m_scale_coefficient && indicator2 < m_scale_coefficient))
+        return std::nullopt;
+    else
+        return InterPolatePoint(p1, p2, indicator1, indicator2);
 }
 
 Point PoissonReconstruction::InterPolatePoint(Point const& p1, Point const& p2, double indicator1, double indicator2)

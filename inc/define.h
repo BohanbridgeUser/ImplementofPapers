@@ -49,6 +49,7 @@
 #include <unordered_set>
 #include <cassert>
 #include <fstream>
+#include <variant>
 
 #include <omp.h>
 

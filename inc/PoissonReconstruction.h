@@ -53,7 +53,7 @@ class PoissonReconstruction : public Algorithm
         std::array<std::array<int,2>, 12>                               m_edgeTable;
         std::map<NodeIndex,std::array<double, 8>>                       m_node_indicators;
         std::map<NodeIndex,std::bitset<8>>                              m_indices;
-
+        std::unordered_map<int, bool>                                   m_checked;        
 
         bool loadPointsWithNormal();
         bool reverseNormal();
@@ -136,8 +136,12 @@ class PoissonReconstruction : public Algorithm
 
         void calNodeVerIndicatorAndIndex(NodeIndex node, std::vector<Point>& nodeVertices);
         std::unordered_set<Segment> finestEdges(Segment& edge, NodeIndex node);
+        std::variant<Point,int> finestZeroCrossing(Segment& edge, NodeIndex node);
+        std::optional<Point> interPolatePoint(Segment const& edge);
+        bool preSplitRecursively(NodeIndex node);
         Point InterPolatePoint(Point const& p1, Point const& p2, double indicator1, double indicator2);
-
+        bool checkSplit(NodeIndex node, std::array<int, 16>& allEdgeIDs, std::vector<Point>& nodeVertices); 
+        void splitRecursively(NodeIndex node);
 };
 
 
